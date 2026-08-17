@@ -17,6 +17,9 @@ export interface IssueDoc {
   ownerId: string;
   parentId: string;
   shortId: string;
+  /** The sortable halves of a sequential `shortId`; both absent on a legacy row. */
+  refPrefix?: string;
+  refSeq?: number;
   title: string;
   description: string;
   /** Built-in status or a custom column key. */
@@ -51,6 +54,11 @@ export interface IssueDoc {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  /** When it entered a done status and stayed there; null while open. */
+  resolvedAt: Date | null;
+  /** `title` + `shortId`, đã chuẩn hoá. Xem search-text.util.ts. Repository
+   *  tính field này trong `toDocument()`. */
+  searchText: string;
 }
 
 export const IssueSchema = new Schema<IssueDoc>(
@@ -70,6 +78,11 @@ export const IssueSchema = new Schema<IssueDoc>(
     // Human-friendly reference used in URLs (TSK-7 / BUG-12). Unique per tenant via
     // the partial index below; '' until the backfill reaches a pre-shortId row.
     shortId: { type: String, default: '' },
+    // Sort key for a sequential shortId. Deliberately without a default: a
+    // pre-sequential row must keep these ABSENT, so it sorts as null and groups
+    // with its peers instead of pretending to be number 0.
+    refPrefix: { type: String },
+    refSeq: { type: Number },
     title: { type: String, required: true, maxlength: 200 },
     description: { type: String, default: '' },
     // No enum: a built-in status or a tenant's custom column key.
@@ -95,7 +108,9 @@ export const IssueSchema = new Schema<IssueDoc>(
     // per-assignee filters `$or` against `assignees.id`.
     assigneeId: { type: String, default: '', index: true },
     assigneeName: { type: String, default: '' },
-    createdBy: { type: String, default: '' },
+    // Who opened it. Indexed like `assigneeId` above: it's what the boards'
+    // "Creator" filter narrows on.
+    createdBy: { type: String, default: '', index: true },
     createdByName: { type: String, default: '' },
     // BUG-only reporter (mirrors createdBy on a bug); '' for a task.
     reporterId: { type: String, default: '' },
@@ -118,14 +133,21 @@ export const IssueSchema = new Schema<IssueDoc>(
     // type's value (string/number/bool/date-string) round-trips. Empty by default.
     customFields: { type: Schema.Types.Mixed, default: {} },
     order: { type: Number, default: 0 },
+    // When this issue became finished — set/cleared by the entity as it crosses
+    // the done boundary (never by a client). Indexed: it's what the boards'
+    // "Solved date" filter ranges over. Absent on a pre-`resolvedAt` row reads
+    // as null; `backfill:issue-resolved-at` stamps those from their updatedAt.
+    resolvedAt: { type: Date, default: null, index: true },
+    searchText: { type: String, default: '' },
   },
   { timestamps: true },
 );
 
 // Lookups + uniqueness for the URL-facing short id. `partialFilterExpression`
 // (not `sparse`) because unset rows default to '' rather than being absent —
-// sparse would still index them and the second '' would collide. Task and bug
-// shortIds never collide (TSK-* vs BUG-*), so this holds across the merged set.
+// sparse would still index them and the second '' would collide. Refs no longer
+// segregate by kind (a team's tasks and bugs share one prefix); uniqueness comes
+// from the shared per-prefix counter, and this index is what enforces it.
 IssueSchema.index(
   { tenantId: 1, shortId: 1 },
   { unique: true, partialFilterExpression: { shortId: { $gt: '' } } },
@@ -135,3 +157,17 @@ IssueSchema.index(
 // A multikey index on the array path — the primary is covered by `assigneeId`
 // above, and an assignee filter hits both halves of its `$or`.
 IssueSchema.index({ tenantId: 1, 'assignees.id': 1 });
+
+// Sort-by-ID: the denormalized halves of a sequential shortId, compared as a
+// prefix + number instead of parsing the ref string. Legacy rows are missing
+// both, so they sort as null and group together.
+//
+// `createdAt` and `_id` are part of the key because the ID sort is the four-clause
+// `{refPrefix, refSeq, createdAt, _id}` (see `issueSortStage`) — Mongo can only
+// use an index for a sort when the sort pattern is a *prefix* of the index key
+// pattern, so a three-field index would leave every ID-sorted query doing a
+// blocking in-memory SORT. Direction is uniform, so the same index serves both
+// asc and desc (Mongo walks it backwards).
+IssueSchema.index({ tenantId: 1, refPrefix: 1, refSeq: 1, createdAt: 1, _id: 1 });
+
+IssueSchema.index({ tenantId: 1, searchText: 1 });

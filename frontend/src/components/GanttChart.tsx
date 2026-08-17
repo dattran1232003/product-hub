@@ -22,9 +22,17 @@ export const GANTT_DAY = 86_400_000;
 // run from "Login" to a full user story. Every place that needs the width reads
 // the state (inline styles, not Tailwind classes, which can't take a JS value).
 const RAIL_KEY = 'ph_gantt_rail_w';
-const RAIL_DEFAULT = 200;
+// Wide enough out of the box for a title *and* the row's chips (status, labels,
+// people — see `GanttRow.meta`); on a phone the rail is sticky and would eat the
+// whole viewport at that width, so it starts narrower there and is dragged out.
+const RAIL_DEFAULT = 264;
+const RAIL_DEFAULT_SM = 180;
 const RAIL_MIN = 120;
-const RAIL_MAX = 520;
+const RAIL_MAX = 560;
+
+/** The starting width for this viewport — also what `Home` restores. */
+const defaultRail = () =>
+  typeof window !== 'undefined' && window.innerWidth < 640 ? RAIL_DEFAULT_SM : RAIL_DEFAULT;
 /** How much the timeline track keeps for itself — the chart scrolls below this. */
 const TRACK_MIN = 560;
 /** Keyboard resize step (the rail is a focusable separator). */
@@ -34,9 +42,9 @@ const clampRail = (n: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, Math.roun
 function readRail(): number {
   try {
     const raw = Number(localStorage.getItem(RAIL_KEY));
-    return raw ? clampRail(raw) : RAIL_DEFAULT;
+    return raw ? clampRail(raw) : defaultRail();
   } catch {
-    return RAIL_DEFAULT;
+    return defaultRail();
   }
 }
 function writeRail(w: number) {
@@ -111,11 +119,47 @@ export interface GanttMarker {
   tooltip?: string;
 }
 
+/**
+ * A named stretch of the axis drawn *behind* every row — a sprint, a quarter, a
+ * release window. Bands turn the free-running date axis into a **ruler you can
+ * name**: instead of reading a bar's dates and working out which sprint they fall
+ * in, the bar's position says it. The label rides in its own strip above the date
+ * ticks; the tint runs the full height of the chart.
+ */
+export interface GanttBand {
+  key: string;
+  start: number;
+  end: number;
+  label: string;
+  /** Hover text — the full "Cycle 12 · Aug 3 – Aug 16 · 6/9 done". */
+  title?: string;
+  /**
+   * `focus` — the band the view is scoped to (brand tint, the strongest);
+   * `active` — the one running today; `default` — everything else, which
+   * alternates a faint tint so consecutive bands stay countable.
+   */
+  tone?: 'default' | 'active' | 'focus';
+}
+
 export interface GanttRow {
   id: string;
   label: string;
+  /**
+   * Turns this row into a **full-width section header** instead of a timeline row
+   * — the label pins to the left edge, there is no bar, and `cols` doesn't apply.
+   * Used to group rows under a sprint; the rest of `GanttRow` is ignored.
+   */
+  group?: ReactNode;
   /** Secondary line under the label (e.g. "60% · 3 tasks"). */
   sublabel?: string;
+  /**
+   * The row's **chips** — status, severity, labels, assignees: everything a card
+   * or a list row shows beside its title, so a timeline identifies a row as fully
+   * as the other views of the same board do. Filled by the adapter (it owns what
+   * a row *is*); built from {@link GanttChip}, `LabelChips` and `AssigneeBadge`
+   * so all three surfaces stay one treatment. Wraps when the rail is narrow.
+   */
+  meta?: ReactNode;
   /** 0 = top-level, 1 = an indented child (e.g. a task under a roadmap item). */
   depth?: number;
   /** Leading dot before the label — a status/severity colour. */
@@ -146,6 +190,9 @@ export interface GanttChartProps {
   rows: GanttRow[];
   /** Header for the fixed left label rail (e.g. "Item" / "Issue"). */
   labelHeader: string;
+  /** Named stretches of the axis drawn behind the rows — see {@link GanttBand}.
+   *  Their endpoints widen the window, so a band is always shown whole. */
+  bands?: GanttBand[];
   /** Optional legend row above the chart explaining bars/markers. */
   legend?: ReactNode;
   isLoading?: boolean;
@@ -167,7 +214,7 @@ export interface GanttChartProps {
  * A row that supplies `onBarChange` is also **editable**: its bar drags to a new
  * window and its edges resize, snapped to whole days.
  */
-export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: GanttChartProps) {
+export function GanttChart({ rows, labelHeader, bands = [], legend, isLoading, empty }: GanttChartProps) {
   const [railW, setRailW] = useState(readRail);
   const railDrag = useRef<{ x0: number; w0: number } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -195,7 +242,7 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
    *  Home restores the default. Pointer-only would leave it unreachable. */
   const railKeys = (e: ReactKeyboardEvent<HTMLElement>) => {
     const step = e.key === 'ArrowLeft' ? -RAIL_STEP : e.key === 'ArrowRight' ? RAIL_STEP : 0;
-    const next = e.key === 'Home' ? RAIL_DEFAULT : step ? clampRail(railW + step) : null;
+    const next = e.key === 'Home' ? defaultRail() : step ? clampRail(railW + step) : null;
     if (next === null) return;
     e.preventDefault();
     setRailW(next);
@@ -222,11 +269,16 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
     );
   }
 
-  // Padded window covering every endpoint plus today, so the "today" line always lands.
+  // Padded window covering every endpoint plus today, so the "today" line always
+  // lands. Bands count too: a sprint drawn half off the edge would misreport where
+  // it ends, and the caller passes only the bands worth showing.
   const stamps = [Date.now()];
   for (const r of rows) {
     if (r.bar) stamps.push(r.bar.start, r.bar.end);
     if (r.marker && isEpoch(r.marker.at)) stamps.push(r.marker.at);
+  }
+  for (const b of bands) {
+    if (isEpoch(b.start) && isEpoch(b.end)) stamps.push(b.start, b.end);
   }
   let minMs = Math.min(...stamps);
   let maxMs = Math.max(...stamps);
@@ -238,6 +290,17 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - minMs) / (maxMs - minMs)) * 100));
   const ticks = buildTicks(minMs, maxMs);
   const todayX = pct(Date.now());
+  // Left → right, so the alternating tint of the `default` tone counts bands in
+  // reading order regardless of how the caller sorted them.
+  const lanes = bands
+    .filter((b) => isEpoch(b.start) && isEpoch(b.end) && b.end >= minMs && b.start <= maxMs)
+    .sort((a, b) => a.start - b.start)
+    .map((b, i) => ({
+      band: b,
+      left: pct(b.start),
+      width: Math.max(0, pct(b.end) - pct(b.start)),
+      odd: i % 2 === 1,
+    }));
 
   return (
     <div className="flex flex-col gap-3">
@@ -267,28 +330,74 @@ export function GanttChart({ rows, labelHeader, legend, isLoading, empty }: Gant
                 />
               </div>
             </div>
-            <div className="relative h-8 bg-muted/40">
-              {ticks.map((tk, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 flex h-full items-center whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground"
-                  style={{ left: `${tk.x}%` }}
-                >
-                  {tk.label}
+            <div className="bg-muted/40">
+              {/* Band names ride above the dates — the axis reads "Cycle 12", then
+                  "Aug 3, Aug 10", so a bar's sprint is legible from its position. */}
+              {lanes.length > 0 && (
+                <div className="relative h-5 border-b border-border/60">
+                  {lanes.map(({ band, left, width }) => (
+                    <div
+                      key={band.key}
+                      className="absolute inset-y-0 flex items-center overflow-hidden border-l border-border/60 px-1.5"
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                      title={band.title ?? band.label}
+                    >
+                      <span
+                        className={cn(
+                          'truncate text-[10px] font-semibold leading-none',
+                          band.tone === 'focus'
+                            ? 'text-primary'
+                            : band.tone === 'active'
+                              ? 'text-foreground'
+                              : 'text-muted-foreground',
+                        )}
+                      >
+                        {band.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <div
-                className="absolute top-0 -translate-x-1/2 rounded-b bg-foreground/80 px-1 text-[10px] font-medium text-background"
-                style={{ left: `${todayX}%` }}
-              >
-                {t('boards.today')}
+              )}
+              <div className="relative h-8">
+                {ticks.map((tk, i) => (
+                  <div
+                    key={i}
+                    className="absolute top-0 flex h-full items-center whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground"
+                    style={{ left: `${tk.x}%` }}
+                  >
+                    {tk.label}
+                  </div>
+                ))}
+                <div
+                  className="absolute top-0 -translate-x-1/2 rounded-b bg-foreground/80 px-1 text-[10px] font-medium text-background"
+                  style={{ left: `${todayX}%` }}
+                >
+                  {t('boards.today')}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Body: gridlines + today line sit behind the rows. */}
+          {/* Body: band tints, gridlines and the today line sit behind the rows. */}
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 right-0 z-0" style={{ left: railW }}>
+              {/* Painted first so gridlines stay on top of them. `default` bands
+                  alternate a faint tint — enough to count sprints across, not
+                  enough to compete with the bars. */}
+              {lanes.map(({ band, left, width, odd }) => (
+                <div
+                  key={band.key}
+                  className={cn(
+                    'absolute inset-y-0 border-l border-border/60',
+                    band.tone === 'focus'
+                      ? 'bg-primary/[0.07]'
+                      : band.tone === 'active'
+                        ? 'bg-foreground/[0.04]'
+                        : odd && 'bg-muted/30',
+                  )}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                />
+              ))}
               {ticks.map((tk, i) => (
                 <div key={i} className="absolute inset-y-0 w-px bg-border/70" style={{ left: `${tk.x}%` }} />
               ))}
@@ -319,6 +428,19 @@ function GanttRowView({
   pct: (v: number) => number;
   spanMs: number;
 }) {
+  // A section header spans both columns and carries no timeline of its own.
+  // Pinned left like the rail: a group you can't read after scrolling the axis
+  // sideways would defeat the point of grouping.
+  if (row.group) {
+    return (
+      <div className="border-b bg-muted/60 last:border-0">
+        <div className="sticky left-0 flex w-fit max-w-full items-center gap-2 px-3 py-1.5">
+          {row.group}
+        </div>
+      </div>
+    );
+  }
+
   const child = (row.depth ?? 0) > 0;
   const interactive = !!(row.href || row.onClick);
 
@@ -341,20 +463,20 @@ function GanttRowView({
       {row.label}
     </span>
   );
-  /** A child indents into a single flex row; a top-level row is a flex column so
-   *  it can carry a sublabel line under the title. */
-  const body = child ? (
-    <>
-      {dot}
-      {title}
-    </>
-  ) : (
+  /** Title line, then whatever the row carries under it — a sublabel and/or the
+   *  chips row. Child rows use the same stack (just indented and quieter), so a
+   *  linked task on the roadmap timeline reads like an issue on its own. */
+  const body = (
     <>
       <div className="flex min-w-0 items-center gap-2">
         {dot}
         {title}
       </div>
       {row.sublabel && <span className="truncate text-[11px] text-muted-foreground">{row.sublabel}</span>}
+      {/* Chips **wrap** rather than truncate: the rail is narrow by default and a
+          half-clipped chip reads as broken, whereas a second line only makes the
+          row a little taller (bars stay centred in it). */}
+      {row.meta && <span className="flex flex-wrap items-center gap-1">{row.meta}</span>}
     </>
   );
 
@@ -364,8 +486,8 @@ function GanttRowView({
   // this fixes. One element wraps the lot (link, button, or inert div) rather
   // than a target per line, so there are no dead gaps left between them.
   const cellCls = cn(
-    'flex min-w-0 flex-1',
-    child ? 'items-center gap-2 py-1.5 pl-6 pr-3' : 'flex-col justify-center gap-0.5 px-3 py-2',
+    'flex min-w-0 flex-1 flex-col justify-center gap-0.5',
+    child ? 'py-1.5 pl-6 pr-3' : 'px-3 py-2',
     interactive &&
       'text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
   );
@@ -408,6 +530,48 @@ function GanttRowView({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * One chip on a row's {@link GanttRow.meta} line — a status, a severity, a score.
+ * Tinted from its own colour with the same `color-mix` idiom `LabelChips` uses,
+ * so a status chip and a label chip beside it read as one family; without a
+ * colour it falls back to the muted token (a plain count or ref).
+ *
+ * Exported the way `KanbanBoard` exports `KanbanCard`: an adapter fills the meta
+ * line with these rather than styling a pill of its own, which is what keeps the
+ * issue timeline and the roadmap timeline looking like the same product.
+ */
+export function GanttChip({
+  color,
+  icon,
+  title,
+  children,
+}: {
+  /** The thing's own colour — team status, severity, roadmap status. */
+  color?: string;
+  /** A leading glyph instead of the colour dot (e.g. the OKR target). */
+  icon?: ReactNode;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        'inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
+        !color && 'bg-muted text-muted-foreground',
+      )}
+      style={
+        color
+          ? { color, backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)` }
+          : undefined
+      }
+    >
+      {icon ?? (color && <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />)}
+      <span className="truncate">{children}</span>
+    </span>
   );
 }
 

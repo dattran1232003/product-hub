@@ -1,9 +1,14 @@
 import {
+  ApiKeyScope,
   AuditActorType,
   AuditEntityType,
   BugSeverity,
   BugStatus,
   BugStatusConfig,
+  CodeLinkCiState,
+  CodeLinkKind,
+  CodeLinkMatchedBy,
+  CodeLinkSubject,
   CustomFieldConfig,
   CustomFieldValue,
   CycleMode,
@@ -19,6 +24,7 @@ import {
   McpEntity,
   MilestoneStatus,
   ProjectEnvironment,
+  PullRequestState,
   RelationType,
   RoadmapDifficulty,
   RoadmapItemStatus,
@@ -70,6 +76,9 @@ export interface UserDto {
   role: Role;
   /** Avatar image URL, or null/absent for the initials fallback. */
   avatarUrl?: string | null;
+  /** Last authenticated request from this account, or null if never seen. Stamped
+   *  at most once a minute per user, so treat it as "within the last minute". */
+  lastActiveAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -265,6 +274,13 @@ export interface BugDto {
   id: string;
   /** The team that owns this bug — drives which board columns apply. */
   teamId: string;
+  /** Parent issue id when this bug is a sub-issue ('' when top-level). Bugs nest
+   *  like tasks do — under a bug or a task — so this is not a task-only field. */
+  parentId: string;
+  /** Parent's ref + title, for the breadcrumb. Only the single-bug read fills
+   *  these; on a list they're '' (see `IssueDto`). */
+  parentShortId: string;
+  parentTitle: string;
   tenantId: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `BUG-12`. */
   shortId: string;
@@ -274,6 +290,12 @@ export interface BugDto {
   /** Built-in `BugStatus` or a custom column key. */
   status: string;
   type: string;
+  /** The backlog item this bug was found against ('' = none). Not task-only:
+   *  the mapper serves these for every issue, and a roadmap item's panel lists
+   *  its linked bugs separately from its planned work. */
+  roadmapId: string;
+  roadmapItemId: string;
+  roadmapItemLabel: string;
   projectId: string;
   /** The team cycle this bug is committed to ('' = none). */
   cycleId: string;
@@ -302,6 +324,12 @@ export interface BugDto {
   customFields: Record<string, CustomFieldValue>;
   createdAt: string;
   updatedAt: string;
+  /**
+   * When the bug was solved: the moment it entered Resolved/Closed. `null` while
+   * it's open, and cleared again if it's reopened. Server-owned (stamped on the
+   * status move) — what the board's "Solved date" filter ranges over.
+   */
+  resolvedAt: string | null;
 }
 
 /** A file attached to a bug (image / short video) — matches the upload response. */
@@ -458,6 +486,10 @@ export interface TaskDto {
   ownerId: string;
   /** Parent task id when this is a sub-task ('' for a top-level task). */
   parentId: string;
+  /** Parent's ref + title, for the breadcrumb. Only the single-task read fills
+   *  these; on a list they're '' (see `IssueDto`). */
+  parentShortId: string;
+  parentTitle: string;
   tenantId: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7`. */
   shortId: string;
@@ -525,6 +557,14 @@ export interface IssueDto {
   ownerId: string;
   /** Parent issue id when this is a sub-task ('' if top-level). */
   parentId: string;
+  /**
+   * The parent, denormalized — a bare `parentId` isn't renderable, which is why
+   * a sub-issue's page used to look top-level. **Only `GET /issues/:id` fills
+   * these**; a list read leaves them '' rather than paying a lookup per row, so
+   * don't reach for them from a board.
+   */
+  parentShortId: string;
+  parentTitle: string;
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7` / `BUG-12`. */
   shortId: string;
   title: string;
@@ -575,6 +615,8 @@ export interface IssueDto {
   order: number;
   createdAt: string;
   updatedAt: string;
+  /** When it was solved — see {@link BugDto.resolvedAt}. */
+  resolvedAt: string | null;
 }
 
 // ── Milestones (OKR) ─────────────────────────────────────────────────────────
@@ -621,6 +663,8 @@ export interface ApiKeyDto {
   id: string;
   name: string;
   prefix: string;
+  /** What this key may do through MCP — read-only, read-write, or +delete. */
+  scope: ApiKeyScope;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -689,6 +733,13 @@ export interface TeamDto {
   key: string;
   name: string;
   issueType: TeamIssueType;
+  /** Uppercase ref prefix its issues are numbered with (`ENG` → `ENG-1`).
+   *  `''` on a legacy team that was never assigned one. */
+  refPrefix: string;
+  /** True once the team has issued its first ticket — the prefix is then frozen
+   *  (the numbers are already printed in commits and comments), so the settings
+   *  input is disabled rather than left to fail on submit. */
+  refPrefixLocked: boolean;
   /** Nav symbol; falls back to the issue type's icon. */
   icon: string;
   /** Accent for the symbol; null means it inherits its surroundings. */
@@ -989,4 +1040,110 @@ export interface PublicTeamBoardView {
   team: TeamDto;
   issueType: TeamIssueType;
   items: (BugDto | TaskDto)[];
+}
+
+/** One commit or pull request that named this record, as the Development panel
+ *  renders it. A commit has `sha`/`shortSha` and no `state`; a pull request has
+ *  `number` and a `state`, and leaves the sha empty. */
+export interface CodeLinkDto {
+  id: string;
+  subjectType: CodeLinkSubject;
+  subjectId: string;
+  kind: CodeLinkKind;
+  /** `owner/repo`. */
+  repo: string;
+  sha: string;
+  /** First 7 characters of the sha — what a commit row shows. */
+  shortSha: string;
+  /** Pull request number; 0 on a commit. */
+  number: number;
+  /** Commit subject, or pull request title. */
+  title: string;
+  /** Where a commit landed, or a pull request's source branch. */
+  branch: string;
+  /** A pull request's target branch — `dev`, `main`: the environment it ships
+   *  to. Empty on a commit. */
+  baseBranch: string;
+  /** Empty string on a commit. */
+  state: PullRequestState | '';
+  authorName: string;
+  authorAvatarUrl: string;
+  /** Link to the commit or PR on GitHub. */
+  url: string;
+  matchedBy: CodeLinkMatchedBy;
+  occurredAt: string;
+  /** What CI last said. Empty until a `status` webhook has arrived for this
+   *  work — which needs "Statuses" ticked on the GitHub webhook. */
+  ciState: CodeLinkCiState | '';
+  /** The reporting job, e.g. `ci/circleci: deploy-2`. */
+  ciContext: string;
+  /** Branch CI ran on — `dev`, `main`: the environment the chip names. */
+  ciBranch: string;
+  /** Deep link to the build log on CircleCI. */
+  ciUrl: string;
+  ciAt: string | null;
+}
+
+/** The workspace's GitHub link, as Settings reads it. The signing secret is
+ *  never in here — only whether one is stored. */
+export interface GitHubConnectionDto {
+  connected: boolean;
+  /** The token in the webhook URL. Useless on its own without the secret. */
+  token: string;
+  secretConfigured: boolean;
+  /** Repos a delivery has actually arrived from — collected, never typed in. */
+  connectedRepos: string[];
+  lastEventAt: string | null;
+  lastEventRepo: string;
+}
+
+/** The connect response — the one and only time the signing secret is returned. */
+export interface ConnectedGitHubDto extends GitHubConnectionDto {
+  secret: string;
+}
+
+/** One row of a `GET /v1/search` group. Flat per the API-response rule — the
+ *  backend already resolves `url`/`icon` per hit, so the palette never has to
+ *  know how to route a `SearchType` itself. */
+export interface SearchHitDto {
+  id: string;
+  ref: string;
+  title: string;
+  subtitle: string;
+  url: string;
+  icon: string;
+  score: number;
+  updatedAt: string;
+}
+
+/** One `GET /v1/search` result group — every hit of one `SearchType`, plus
+ *  `total` (which can exceed `items.length` once the server caps a group). */
+export interface SearchGroupDto {
+  type: 'issue' | 'doc' | 'roadmap-item' | 'project' | 'report' | 'testcase';
+  total: number;
+  items: SearchHitDto[];
+}
+
+/** A saved issue-board view — a name over a captured filter/sort/search
+ *  combination. Flat per the API-response rule: the board snapshot
+ *  (`kind`/`view`/`filters`/`sort`/`search`) is returned inline rather than
+ *  nested under a `query` object, mirroring `SavedViewMapper.toDto` on the
+ *  backend. `filters`/`sort` are stored as-is from `FilterMenu`/`SortMenu` —
+ *  a date range is one resolved `"<start>..<end>"` entry, never a preset. */
+export interface SavedViewDto {
+  id: string;
+  ownerId: string;
+  name: string;
+  icon: string;
+  color: string | null;
+  scope: string;
+  shared: boolean;
+  kind: 'task' | 'bug';
+  view: 'board' | 'list' | 'timeline';
+  filters: Record<string, string[]>;
+  sort: { field: string; dir: 'asc' | 'desc' } | null;
+  search: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
 }

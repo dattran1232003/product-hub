@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { AssigneeBadge } from '@/components/AssigneeBadge';
@@ -8,13 +9,10 @@ import { BOARD_GUTTER, IssueBoardLayout } from '@/components/IssueBoardLayout';
 import { KanbanBoard, KanbanCardToolbar } from '@/components/KanbanBoard';
 import { Icon } from '@/components/Icon';
 import { IssueTimelineView } from '@/features/issues/IssueTimelineView';
+import { NO_ISSUE_SORT, SortMenu, type IssueSort } from '@/features/issues/SortMenu';
 import { LabelChips } from '@/features/labels/LabelChips';
-import {
-  FilterMenu,
-  UNASSIGNED,
-  type FilterCategory,
-  type FilterSelections,
-} from '@/components/FilterMenu';
+import { FilterMenu, type FilterCategory, type FilterSelections } from '@/components/FilterMenu';
+import { issueSharedFilterParams, issueSharedFilters } from '@/features/issues/issueFilters';
 import { t } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -32,10 +30,46 @@ import {
   type TaskLabelConfig,
   type TeamStatusConfig,
 } from '@/types/enums';
-import type { BugDto, IssueDto, TaskDto } from '@/types/dto';
+import type { BugDto, CycleDto, IssueDto, TaskDto } from '@/types/dto';
+import { IssueCycleChip } from '@/features/cycles/CycleControls';
+import { useCycleLookup } from '@/features/cycles/api';
 import { TaskCard } from '@/features/tasks/MyTasksPage';
 import { BugCard } from '@/features/bugs/BugsBoardPage';
+import { pruneFilters, sanitizeSavedViewQuery, useSavedViews } from '@/features/saved-views/api';
+import { SavedViewBar } from '@/features/saved-views/SavedViewBar';
 import { useDeleteIssue, useIssues, useSetIssueStatus } from './api';
+
+/**
+ * Builds the URL params for setting `kind` and `view` together in one
+ * `setSearchParams` call.
+ *
+ * `setKind`/`setView` (below) each wrap `setSearchParams` by building a fresh
+ * `URLSearchParams` from whatever `params` snapshot is in their closure, then
+ * calling `setParams`. React-router's `setSearchParams` builds its next
+ * params purely from that argument — it does not merge with any other call
+ * made in the same tick. So calling `setKind(...)` then `setView(...)`
+ * back-to-back (as the saved-view apply effect used to) races: both read the
+ * *same* stale `params` snapshot, and the second call's `replace()` silently
+ * discards whatever the first one just wrote — the URL ends up reflecting
+ * only the second call. Concretely, applying a saved Bug-board view opened
+ * from the Task board would revert to `kind=task` because `setView` ran last
+ * and rebuilt the URL without the `kind` change `setKind` had just made.
+ *
+ * Exported and pure (no state, no `setParams` call) so this can be unit
+ * tested without mounting the page.
+ */
+export function buildKindViewParams(
+  current: URLSearchParams,
+  kind: IssueKind,
+  view: 'board' | 'list' | 'timeline',
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  if (kind === IssueKind.BUG) next.set('kind', 'bug');
+  else next.delete('kind');
+  if (view === 'board') next.delete('view');
+  else next.set('view', view);
+  return next;
+}
 
 /** The two kinds the board can show, in switch order. */
 const KIND_TABS = [
@@ -125,6 +159,10 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
 
   const [filters, setFilters] = useState<FilterSelections>({});
   const [search, setSearch] = useState('');
+  // List-view ordering only (see `SortMenu`), and opt-in: until the user picks
+  // one, neither param is sent and the list is exactly the page the API returns
+  // by default. The board keeps its drag order the same way.
+  const [sort, setSort] = useState<IssueSort | null>(NO_ISSUE_SORT);
 
   // Switching kind rides in the URL (shareable) and clears the filters — severity
   // is bug-only, backlog item is task-only, and the status columns differ, so
@@ -148,6 +186,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     else next.set('view', v);
     setParams(next, { replace: true });
   };
+  const isList = view === 'list';
 
   const issueType = isBug ? TeamIssueType.BUG : TeamIssueType.TASK;
   // Columns start as the *default* team's statuses for this kind — this board spans
@@ -158,6 +197,8 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
   // Labels resolve per-item: each card carries its own teamId (see the task board).
   const labelsFor = useTeamLabelsLookup();
 
+  const shared = issueSharedFilterParams(filters);
+
   const { data, isLoading } = useIssues({
     kind: [kind],
     // "Assigned to me" is strictly the assignee, never the creator. The sentinel
@@ -166,13 +207,24 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     mine: isAll ? undefined : user?.id ?? '__none__',
     search: search || undefined,
     status: filters.status,
-    // Filtering by person only means something when the list isn't already one person's.
-    assigneeId: isAll ? filters.assigneeId : undefined,
+    // Assignee, creator and the two date windows — the block every board shares.
+    ...shared,
+    // Filtering by assignee only means something when the list isn't already one
+    // person's (the API's `mine` wins over it anyway).
+    assigneeId: isAll ? shared.assigneeId : undefined,
     severity: isBug ? (filters.severity as BugSeverity[] | undefined) : undefined,
     projectId: filters.projectId,
     roadmapItemId: isBug ? undefined : filters.roadmapItemId,
+    // Only the list view orders itself. Sending `sort` makes the API drop the
+    // stored `order`, so the board and the timeline must send neither param to
+    // keep today's drag-position-first ordering exactly as it is.
+    sort: isList && sort ? sort.field : undefined,
+    dir: isList && sort ? sort.dir : undefined,
   });
   const items = data?.items ?? [];
+  // Each card/row names its own cycle — at the default all-cycles scope that's the
+  // only place it's stated. Resolved per-row like the labels above.
+  const cycleFor = useCycleLookup(items.map((it) => it.teamId));
   // A board titled "All issues" must not hide a row it has no column for, so any
   // status present on a fetched issue but missing from the default team's set is
   // appended (see `extendColumns`).
@@ -194,10 +246,77 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
     navigate(status ? `${base}?status=${encodeURIComponent(status)}` : base);
   };
 
-  // Only needed to label the filter options — people only on the all-issues board.
-  const { data: usersData } = useUsers({ limit: 100 }, isAll && canManageDelivery);
+  // Only needed to label the filter options. Both scopes need people now: even
+  // "Assigned to me" can be narrowed by who *opened* the issue.
+  const { data: usersData } = useUsers({ limit: 100 }, canManageDelivery);
   const { data: projectsData } = useProjects({ limit: 100 });
   const { data: roadmaps } = useRoadmaps();
+
+  // `?sv=<id>` names a saved view to open. `filters`/`search`/`sort` live in
+  // React state (only `kind` and `view` ride in the URL), so applying a saved
+  // view means writing that state back — there is nothing to restore from the
+  // URL alone.
+  const svId = params.get('sv');
+  const { data: views } = useSavedViews();
+  const activeView = views?.find((v) => v.id === svId);
+
+  // Applies once per `sv` change — deliberately *not* keyed on `filters`,
+  // `sort` etc., or every edit the user makes afterwards would immediately be
+  // pulled back to the saved view.
+  useEffect(() => {
+    if (!svId) return;
+    if (!views) return; // still loading — wait for the list rather than 404 early.
+    if (!activeView) {
+      // Deleted, or not shared with this user: open the default board instead
+      // of a blank one, and say why.
+      toast.error(t('savedViews.cannotOpen'));
+      const next = new URLSearchParams(params);
+      next.delete('sv');
+      setParams(next, { replace: true });
+      return;
+    }
+    // The stored query is never trusted as-is — it may predate a filter-shape
+    // change or come from an older client (`CreateSavedViewDto.query` is only
+    // `@IsObject()`-validated server-side). `sanitizeSavedViewQuery` defends
+    // every field independently so a malformed one degrades to the board's
+    // own default rather than crashing or wedging the filter state.
+    const q = sanitizeSavedViewQuery(activeView);
+    // A deleted project or backlog item must not blank the whole board — drop
+    // just that stale id, keep the rest, and say so. Only these two
+    // categories are checked: `severity` is a closed enum that can't go
+    // stale, and a trustworthy valid set for `status` (team-specific,
+    // depends on the *target* kind we're about to switch to) or `assigneeId`
+    // (only loaded when `isAll && canManageDelivery`, and capped at 100)
+    // isn't cheaply available here. Known gap: a stale `status`/`assigneeId`
+    // filter is left in place — the board just shows no matches for it,
+    // and per `FilterMenu.tsx`, the user's only way to remove a single stale
+    // chip today is "Clear all" (no per-chip remove). `projectsData`/
+    // `roadmaps` are also not yet guaranteed loaded the first time this runs
+    // (they're independent queries fired alongside `views`) — when either is
+    // still `undefined`, that category is simply skipped this pass rather
+    // than treated as "nothing is valid", so a stale id can survive one
+    // apply if its data hasn't arrived yet. This is a real, not hypothetical,
+    // race window; deliberately not covered by `useEffect`'s deps below,
+    // since re-running on every load of `projectsData`/`roadmaps` would risk
+    // the same "pulled back after editing" loop `filters` is kept out for.
+    const { filters: pruned, dropped } = pruneFilters(q.filters, {
+      ...(projectsData ? { projectId: new Set(projectsData.items.map((p) => p.id)) } : {}),
+      ...(roadmaps
+        ? { roadmapItemId: new Set(roadmaps.flatMap((r) => (r.items ?? []).map((i) => i.id))) }
+        : {}),
+    });
+    // `kind` and `view` are set together in one `setParams` call — see
+    // `buildKindViewParams` above for why two separate calls (`setKind` then
+    // `setView`) race and silently drop the kind change.
+    if (q.kind !== kind || q.view !== view) {
+      setParams(buildKindViewParams(params, q.kind, q.view), { replace: true });
+    }
+    setFilters(pruned);
+    setSort(q.sort);
+    setSearch(q.search);
+    if (dropped) toast.warning(t('savedViews.someFiltersDropped'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svId, views]);
 
   const filterCategories: FilterCategory[] = [
     {
@@ -205,25 +324,6 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       label: t('roadmaps.status'),
       options: columns.map((c) => ({ id: c.key, label: c.label, color: c.color })),
     },
-    // Assignee is the axis that only appears once the board isn't already one
-    // person's — same shape as the team boards', self-filter first (the people
-    // list is manager-only, so a member can still narrow to their own).
-    ...(isAll
-      ? [
-          {
-            id: 'assigneeId',
-            label: t('filters.assignee'),
-            searchable: true,
-            options: [
-              ...(user ? [{ id: user.id, label: t('filters.assignedToMe') }] : []),
-              { id: UNASSIGNED, label: t('filters.unassigned') },
-              ...(usersData?.items ?? [])
-                .filter((u) => u.id !== user?.id)
-                .map((u) => ({ id: u.id, label: u.name })),
-            ],
-          },
-        ]
-      : []),
     // Severity is a bug-only axis; backlog item is task-only.
     ...(isBug
       ? [
@@ -254,6 +354,9 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
       searchable: true,
       options: (projectsData?.items ?? []).map((p) => ({ id: p.id, label: p.title })),
     },
+    // Assignee · creator · created date · solved date — identical on every board.
+    // Assignee only appears once the board isn't already one person's.
+    ...issueSharedFilters({ user, users: usersData?.items, includeAssignee: isAll }),
   ];
 
   /** Issues don't persist ordering, so the drop slot is ignored — only the
@@ -281,15 +384,31 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           <FilterMenu size="default" categories={filterCategories} value={filters} onChange={setFilters} />
         </div>
       }
+      sort={isList ? <SortMenu value={sort} onChange={setSort} /> : undefined}
       filtersEnd={
-        capped ? (
-          <p className="text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {items.length} / {data?.total}
-            </span>{' '}
-            {t('issues.cappedHint')}
-          </p>
-        ) : undefined
+        <div className="flex flex-wrap items-center gap-2">
+          <SavedViewBar
+            kind={kind}
+            view={view}
+            filters={filters}
+            sort={sort}
+            search={search}
+            activeView={activeView}
+            onSaved={(id) => {
+              const next = new URLSearchParams(params);
+              next.set('sv', id);
+              setParams(next, { replace: true });
+            }}
+          />
+          {capped && (
+            <p className="text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                {items.length} / {data?.total}
+              </span>{' '}
+              {t('issues.cappedHint')}
+            </p>
+          )}
+        </div>
       }
       view={{
         value: view,
@@ -336,9 +455,19 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
           // reject a structural assign — the runtime shape is identical, hence the cast.
           renderCard={(it, overlay) =>
             isBug ? (
-              <BugCard bug={it as unknown as BugDto} labels={labelsFor(it.teamId)} overlay={overlay} />
+              <BugCard
+                bug={it as unknown as BugDto}
+                labels={labelsFor(it.teamId)}
+                cycle={cycleFor(it.cycleId)}
+                overlay={overlay}
+              />
             ) : (
-              <TaskCard task={it as unknown as TaskDto} labels={labelsFor(it.teamId)} overlay={overlay} />
+              <TaskCard
+                task={it as unknown as TaskDto}
+                labels={labelsFor(it.teamId)}
+                cycle={cycleFor(it.cycleId)}
+                overlay={overlay}
+              />
             )
           }
           onMove={onMove}
@@ -368,6 +497,7 @@ export function IssuesPage({ scope }: { scope: IssueScope }) {
             items={items}
             columns={columns}
             labelsFor={labelsFor}
+            cycleFor={cycleFor}
             isBug={isBug}
             onOpen={openIssue}
           />
@@ -387,12 +517,14 @@ function IssueList({
   items,
   columns,
   labelsFor,
+  cycleFor,
   isBug,
   onOpen,
 }: {
   items: IssueDto[];
   columns: TeamStatusConfig[];
   labelsFor: (teamId: string | undefined) => TaskLabelConfig[];
+  cycleFor: (cycleId: string | undefined) => CycleDto | undefined;
   isBug: boolean;
   onOpen: (item: IssueDto) => void;
 }) {
@@ -426,6 +558,12 @@ function IssueList({
                     <Icon name="tasks" size={14} className="shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate text-sm">{it.title}</span>
+                  {/* Hidden on mobile, like the labels beside it — a row has room
+                      for the title and the assignee first. */}
+                  <IssueCycleChip
+                    cycle={cycleFor(it.cycleId)}
+                    className="hidden shrink-0 sm:flex"
+                  />
                   <LabelChips
                     keys={it.labelKeys}
                     labels={labelsFor(it.teamId)}

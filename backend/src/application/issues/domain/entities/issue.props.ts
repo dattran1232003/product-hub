@@ -33,6 +33,18 @@ export interface IssueProps {
   /** Human-friendly per-tenant reference used in URLs, e.g. `TSK-7` / `BUG-12`.
    *  The internal UUID remains the real identity. */
   shortId: string;
+  /**
+   * The two halves of a sequential `shortId`, denormalized so a list can sort by
+   * ID on an index instead of parsing the ref string. Written once at mint and
+   * never recomputed — an issue that moves team keeps the pair matching its
+   * frozen `shortId`.
+   *
+   * **Both are absent on every issue created before sequential refs**, and stay
+   * absent: those rows are never written to. Missing sorts as null in Mongo, so
+   * they group together and `createdAt` orders them within the group.
+   */
+  refPrefix?: string;
+  refSeq?: number;
   title: string;
   description: string;
   /** Column key: a built-in status (`TaskStatus`/`BugStatus`) or a custom slug. */
@@ -118,4 +130,16 @@ export interface IssueProps {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * When this issue became **finished** — the moment it entered a completed
+   * status (`COMPLETED_STATUS_KEYS`: resolved/closed for a bug, done for a task)
+   * and stayed there. `null` while it is open.
+   *
+   * Owned entirely by {@link IssueEntity.setStatus}: the *first* move into a
+   * completed status stamps it (so resolved → closed keeps the moment it was
+   * actually fixed), and moving back out — a reopen — clears it, because a
+   * reopened bug is not solved and must not carry a solve date. A client can
+   * never set or backdate it.
+   */
+  resolvedAt: Date | null;
 }

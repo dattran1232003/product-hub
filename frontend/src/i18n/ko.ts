@@ -23,6 +23,7 @@ export const ko: Record<I18nKey, string> = {
   'nav.tasks': '내 태스크',
   'nav.myTeam': '내 팀',
   'nav.favourites': '즐겨찾기',
+  'nav.savedViews': '뷰',
   'nav.assignedToMe': '나에게 배정됨',
   'nav.allIssues': '모든 이슈',
   'nav.today': '오늘 및 기한 초과',
@@ -183,6 +184,24 @@ export const ko: Record<I18nKey, string> = {
   'report.importReady': '준비됨',
   'report.importSkipped': '건너뜀',
   'report.importMoreRows': '개 행 더',
+  // 기능 가져오기 (사이드바 그룹 → 업로드 버튼).
+  'report.importFeatures': '기능 가져오기',
+  'report.importFeaturesTip': '파일에서 기능 가져오기',
+  'report.importFeaturesHint':
+    'Excel, CSV, JSON 파일을 놓으세요. "Feature" 열이 기능 이름이 되고, 나머지 열(Area, Type, Result, Owner, Steps, Expected…)은 해당 기능의 테스트 케이스가 됩니다. 가져온 기능이 들어갈 그룹:',
+  'report.importFeaturesEmpty':
+    '기능을 찾지 못했습니다. "Feature" 열을 추가하거나 기능마다 시트를 나누세요.',
+  'report.importSplitColumn': 'Feature 열 기준으로 분리',
+  'report.importSplitSheet': '시트마다 기능 하나',
+  'report.importSplitFile': '파일 전체를 기능 하나로',
+  'report.importExisting': '이미 있음',
+  'report.importFeaturesSummary': '{features}와 {cases}를 가져옵니다.',
+  'report.importFeaturesCreated': '{features} 생성',
+  'report.importFeaturesToppedUp': '{n}개 추가 반영',
+  'report.importFeaturesCases': '{cases} 가져옴',
+  'report.importFeaturesFailed': '일부 기능을 가져오지 못했습니다:',
+  'report.featureOne': '기능',
+  'report.featureMany': '기능',
   'report.caseOne': '케이스',
   'report.caseMany': '케이스',
   'report.noCases': '아직 테스트 케이스가 없습니다. 아래에서 추가하거나 파일을 가져오세요.',
@@ -608,6 +627,42 @@ export const ko: Record<I18nKey, string> = {
   'roadmaps.legendLowHigh': '낮음 → 높음',
   'roadmaps.legendBubble': '버블 크기 = 리치',
 
+  // Sprints on a roadmap — see the note in en.ts. "스프린트" rather than "사이클":
+  // a cycle belongs to one team, this is the shared window across teams.
+  'sprints.filterLabel': '스프린트',
+  'sprints.current': '현재 스프린트',
+  'sprints.all': '모든 스프린트',
+  'sprints.none': '스프린트 미지정',
+  'sprints.teams': '{n}개 팀',
+  'sprints.backlogItems': '백로그 항목',
+  'sprints.tasksDone': '태스크 완료',
+  // Timeline
+  'sprints.groupBySprint': '스프린트별 그룹',
+  'sprints.axisBands': '축에 스프린트 표시',
+  'sprints.axisHint': '음영 구간이 스프린트입니다',
+  'sprints.noSprintGroup': '스프린트 없음',
+  'sprints.groupSummary': '항목 {items}개 · 태스크 {done}/{tasks} 완료',
+  'sprints.emptyScoped': '이 스프린트에 배정된 작업이 없습니다',
+  'sprints.emptyScopedHint':
+    '이 스프린트에 태스크가 있는 백로그 항목이 아직 없습니다. 다른 스프린트를 선택하거나 “스프린트 미지정”에서 아직 계획되지 않은 항목을 확인하세요.',
+  'sprints.emptyNone': '모든 항목이 스프린트에 있습니다',
+  'sprints.emptyNoneHint': '이 로드맵의 모든 백로그 항목이 스프린트에 배정되어 있습니다.',
+  'sprints.moved': '{name}(으)로 이동했습니다',
+  'sprints.movedOut': '스프린트에서 제외했습니다',
+  'sprints.moveTasks': '태스크 {n}개',
+  'sprints.moveStuck': '{n}개는 그대로 — 해당 팀은 그 기간에 사이클이 없습니다',
+  'sprints.moveFailed': '항목을 이동할 수 없습니다',
+  'sprints.moveNoTasks': '먼저 태스크를 연결하세요 — 백로그 항목은 태스크를 통해 계획됩니다',
+  'sprints.moveDoneTitle': '이미 완료된 작업도 함께 이동합니다',
+  'sprints.moveDoneBody':
+    '완료된 태스크 {n}개가 {from}에서 빠져나가며, 해당 사이클의 완료 실적 — 속도와 번다운 — 도 함께 바뀝니다.',
+  'sprints.moveDoneClosed': '해당 사이클은 이미 종료되어 그 수치를 확정해 보고했습니다.',
+  'sprints.moveDoneAllDone':
+    '이동할 미완료 작업이 없습니다 — 사이클이 바뀌는 태스크는 모두 완료 상태입니다.',
+  'sprints.moveUnfinishedOnly': '미완료만 이동',
+  'sprints.moveAllAnyway': '모두 이동',
+  'sprints.moveKeptDone': '완료된 {n}개는 기존 사이클에 남았습니다',
+
   // Tasks — engineering execution on a backlog item
   'tasks.title': '태스크',
   'tasks.empty': '아직 태스크가 없습니다 — 첫 작업을 추가하세요.',
@@ -622,19 +677,34 @@ export const ko: Record<I18nKey, string> = {
   'relations.search': '제목 또는 ID로 검색…',
   'relations.empty': '일치하는 이슈가 없습니다.',
   'relations.none': '연결할 이슈를 검색하세요.',
+  'relations.backlogRef':
+    '백로그 항목 같습니다 — 백로그 항목은 이슈가 아닙니다. 속성의 “백로그 항목” 필드에서 연결하세요.',
   'relations.remove': '관계 제거',
   'relations.kindBug': '버그',
+  'relations.linkCount': '{count}개 연결',
   'tasks.assign': '배정',
   'tasks.unassigned': '담당자 미지정',
   'tasks.assignMe': '나에게 배정',
   'tasks.assignedYou': '나에게 배정됨',
   'tasks.doneOf': '{total}개 중 {done}개 완료',
   'subtasks.title': '하위 태스크',
+  'subtasks.expand': '하위 태스크 펼치기',
+  'subtasks.collapse': '하위 태스크 접기',
   'subtasks.linkTitle': '기존 태스크를 하위 태스크로 연결',
+  'subtasks.linkBugTitle': '기존 버그를 하위 이슈로 연결',
   'subtasks.empty': '아직 하위 태스크가 없습니다 — 작업을 더 작게 나눠보세요.',
   'subtasks.addPlaceholder': '하위 태스크를 입력하고 Enter를 누르세요…',
   'subtasks.add': '하위 태스크 추가',
   'subtasks.titlePlaceholder': '하위 태스크 제목',
+  'subtasks.parent': '상위',
+  'subtasks.parentNone': '상위 없음',
+  'subtasks.parentElsewhere': '다른 이슈',
+  'subtasks.unlinkParent': '상위 항목에서 분리 (작업은 유지)',
+  'subtasks.unlinkBacklog': '이 백로그 항목에서 제거 (작업은 유지)',
+  'subtasks.bugs': '버그',
+  'issues.parentSet': '상위 지정',
+  'issues.parentPick': '상위 이슈 선택',
+  'issues.parentClear': '상위 해제',
   'issues.add': '이슈 추가',
   'issues.mySubtitle': '나에게 배정된 모든 것 — 태스크와 버그.',
   'issues.allTitle': '모든 이슈',
@@ -644,6 +714,33 @@ export const ko: Record<I18nKey, string> = {
   'issues.cappedHint': '표시됨 — 검색이나 필터로 범위를 좁히세요.',
   'issues.kindTasks': '태스크',
   'issues.kindBugs': '버그',
+  // Saved views on the issue board — save the current filter/sort/search
+  // combination under a name (`?sv=<id>`), and reapply it later.
+  'savedViews.saveCurrent': '뷰 저장',
+  'savedViews.save': '저장',
+  'savedViews.saveAsNew': '새 뷰로 저장',
+  'savedViews.modified': '수정됨',
+  'savedViews.name': '뷰 이름',
+  'savedViews.share': '워크스페이스와 공유',
+  'savedViews.shareHint': '워크스페이스의 누구나 이 뷰를 열고 사용할 수 있습니다.',
+  // Shown when `?sv=` names a view that's gone (deleted) or not shared with
+  // this user — the board opens with its default filters instead of blank.
+  'savedViews.cannotOpen': '이 뷰는 더 이상 사용할 수 없습니다 — 기본 보드를 표시합니다.',
+  // Shown when applying a saved view drops a filter pointing at something
+  // deleted since it was saved (a project, a backlog item).
+  'savedViews.someFiltersDropped': '이 뷰의 일부 필터가 더 이상 존재하지 않는 항목을 가리켜 건너뛰었습니다.',
+  // Hover delete action on a saved-view sidebar row — shown only when the
+  // viewer owns the view or is an admin (mirrors the backend's own gate).
+  'savedViews.delete': '뷰 삭제',
+  // Sort control (list view) — field on top, direction below. `sort.title` also
+  // composes into the trigger (`정렬: ID`), so it carries no trailing colon.
+  'sort.title': '정렬',
+  'sort.fieldDefault': '기본 순서',
+  'sort.fieldId': 'ID',
+  'sort.fieldCreated': '생성일',
+  'sort.fieldUpdated': '수정일',
+  'sort.ascending': '오름차순',
+  'sort.descending': '내림차순',
   // Bulk actions — the List-view multi-select toolbar. Count words compose with a
   // number in code (`3 selected`, `2 updated`), so they carry no placeholder.
   'bulk.selected': '개 선택됨',
@@ -679,6 +776,7 @@ export const ko: Record<I18nKey, string> = {
   'tasks.titleLabel': '제목',
   'tasks.descriptionLabel': '설명',
   'tasks.noBacklogItem': '백로그 항목 없음',
+  'tasks.backlogSearch': '참조 또는 제목으로 검색…',
   'tasks.assignedToYouHint': '이 태스크는 나에게 배정됩니다.',
   'tasks.search': '태스크 검색…',
   'tasks.viewBoard': '보드',
@@ -707,13 +805,9 @@ export const ko: Record<I18nKey, string> = {
   // Issue picker — link an existing task or bug to a backlog item
   'tasks.pick': '기존 항목 연결',
   'tasks.pickTitle': '기존 태스크 또는 버그 연결',
-  'tasks.pickSearch': '이름 또는 ID로 검색…',
-  'tasks.pickEmpty': '그 이름이나 ID와 일치하는 항목이 없습니다.',
-  'tasks.pickNone': '연결할 다른 항목이 없습니다.',
   'tasks.pickLinkedTo': '{item}에 연결됨',
   'tasks.pickUnlinked': '백로그 항목에 연결되지 않음',
   'tasks.pickMoveHint': '연결하면 현재 백로그 항목에서 이곳으로 옮겨집니다.',
-  'tasks.pickKindBug': '버그',
   'tasks.pickAction': '연결',
 
   // My Team — the per-person workload board (Box view) + its List/Board tabs.
@@ -790,6 +884,9 @@ export const ko: Record<I18nKey, string> = {
   'people.email': '이메일',
   'people.password': '임시 비밀번호',
   'people.role': '역할',
+  'people.lastOnline': '마지막 접속',
+  'people.online': '접속 중',
+  'people.neverOnline': '없음',
   'people.empty': '아직 사용자가 없습니다.',
   'people.confirmDelete': '이 사용자를 삭제할까요?',
   'people.remove': '삭제',
@@ -890,8 +987,16 @@ export const ko: Record<I18nKey, string> = {
   'settings.mcpDesktopNote':
     'Claude Code를 비롯해 헤더를 보낼 수 있는 클라이언트에서 동작합니다. Claude Desktop의 커스텀 커넥터는 키 대신 OAuth 로그인을 요구하므로 아직 이 URL을 쓸 수 없습니다.',
   'settings.mcpKeysNote': 'MCP는 API와 같은 키를 씁니다 — 설정 → API 키에서 해지할 수 있습니다.',
+  'settings.mcpKeyScope': '권한',
+  'settings.mcpKeyScopeHint':
+    '이 키를 쓰는 어시스턴트가 할 수 있는 작업입니다. 읽기 전용으로 시작하고, 생성·수정·삭제가 필요할 때만 넓히세요.',
+  'settings.mcpVerbCreated': '생성',
+  'settings.mcpVerbUpdated': '수정',
+  'settings.mcpVerbDeleted': '삭제',
+  'settings.mcpVerbMoved': '이동',
+  'settings.mcpVerbCommented': '댓글',
   'settings.mcpTools':
-    '그런 다음 “내 Product OS 워크스페이스를 보여줘”, “QC에 버그를 등록해줘”, “백로그 항목을 추가해줘”, “이걸 문서로 정리해줘”처럼 요청하세요. 팀, 상태, 담당자는 이름 그대로 받으며, 알 수 없는 값이면 추측하지 않고 가능한 선택지를 알려줍니다.',
+    '그런 다음 “내 Product OS 워크스페이스를 보여줘”, “QC에 버그를 등록해줘”, “백로그 항목을 추가해줘”, “이걸 문서로 정리해줘”처럼 요청하세요. 스크린샷도 첨부할 수 있습니다 — “이 버그를 등록하고 스크린샷도 첨부해줘”라고 하면 파일을 스토리지에 올린 뒤 버그에 붙여 줍니다. 팀, 상태, 담당자는 이름 그대로 받으며, 알 수 없는 값이면 추측하지 않고 가능한 선택지를 알려줍니다.',
   'settings.mcpReady': '키가 준비되었습니다',
   'settings.mcpReadyHint': '이 명령에 키가 이미 들어 있습니다 — 터미널에서 실행하세요.',
   'settings.mcpHistory': 'MCP로 만든 항목',
@@ -899,6 +1004,53 @@ export const ko: Record<I18nKey, string> = {
   'settings.mcpNoHistory': '아직 MCP로 만든 항목이 없습니다.',
   'settings.mcpShowMore': '더 보기',
   'settings.webhooks': '웹훅',
+
+  'settings.github': 'GitHub',
+  'settings.githubHint':
+    '항목 뒤의 작업을 보여줍니다. 커밋 메시지, 브랜치 이름, 풀 리퀘스트 제목에 ENG-14 같은 참조를 적으면 해당 작업·버그·백로그 항목에 나타납니다.',
+  'settings.githubStep1': '워크스페이스 연결',
+  'settings.githubStep1Hint':
+    'GitHub이 전송할 주소와 서명에 사용할 시크릿을 만듭니다. 시크릿은 한 번만 표시됩니다.',
+  'settings.githubConnect': 'GitHub 연결',
+  'settings.githubConnected': '연결됨',
+  'settings.githubRegenerate': '재발급',
+  'settings.githubRegenerateHint':
+    '재발급하면 URL과 시크릿이 모두 바뀝니다 — 곧바로 GitHub의 웹훅을 수정하지 않으면 전송이 중단됩니다.',
+  'settings.githubRegenerateConfirm':
+    '지금 사용 중인 URL과 시크릿은 이 순간부터 동작하지 않습니다. 여기로 전송하던 모든 저장소는 새 값을 웹훅에 붙여 넣기 전까지 조용히 401로 실패합니다. 새 시크릿은 한 번만 표시됩니다.',
+  'settings.githubRegenerateRepos': '현재 전송 중인 저장소:',
+  'settings.githubDisconnect': '연결 해제',
+  'settings.githubDisconnectConfirm':
+    '웹훅 URL이 즉시 응답을 멈춥니다. 이미 연결된 커밋은 항목에 그대로 남지만, 다시 연결하기 전까지 새 커밋은 도착하지 않습니다.',
+  'settings.githubDisconnected': 'GitHub 연결을 해제했습니다.',
+  'settings.githubStep2': 'GitHub에 웹훅 추가',
+  'settings.githubStep2Hint':
+    '저장소에서 Settings → Webhooks → Add webhook으로 이동해 아래 두 값을 붙여 넣으세요.',
+  'settings.githubStep2Locked': '먼저 워크스페이스를 연결하세요 — URL은 그때 만들어집니다.',
+  'settings.githubBase': 'API 주소',
+  'settings.githubBaseHint':
+    'GitHub이 이 API에 접속하는 주소입니다. 브라우저가 사용하는 주소와 다른 주소로 이 API가 공개되어 있다면 변경하세요 — GitHub은 인터넷에서 호출합니다.',
+  'settings.githubPayloadUrl': 'Payload URL',
+  'settings.githubSecret': 'Secret',
+  'settings.githubSecretOnce':
+    '지금 시크릿을 복사하세요 — 다시는 표시되지 않습니다. 잃어버렸다면 재발급한 뒤 GitHub의 웹훅을 수정하세요.',
+  'settings.githubContentType': 'Content type: application/json',
+  'settings.githubEvents': 'Events: Pushes, Pull requests.',
+  'settings.githubReady': '웹훅이 준비되었습니다',
+  'settings.githubReadyHint': 'GitHub → Settings → Webhooks → Add webhook에 붙여 넣으세요.',
+  'settings.githubStep3': '작업에 항목을 언급하기',
+  'settings.githubStep3Hint':
+    '항목의 제목 옆에 있는 참조를 복사해 메시지 어디에나 넣으면 됩니다.',
+  'settings.githubCommitExample': 'git commit -m "ENG-14 fix the login redirect"',
+  'settings.githubRefsHint':
+    '브랜치 이름과 풀 리퀘스트 제목도 인식하므로 git checkout -b 할 때 한 번만 적어도 충분합니다. 모든 티켓을 지원합니다 — 팀 접두사(ENG-14, QC-8)와 백로그 항목(RM-6). 팀별 접두사는 설정 → 팀에서 지정합니다.',
+  'settings.githubActivity': '수신 기록',
+  'settings.githubActivityHint':
+    '연결이 살아 있다는 증거입니다 — GitHub이 마지막으로 보낸 내용과 저장소.',
+  'settings.githubReceiving': '수신 중',
+  'settings.githubWaiting':
+    '아직 수신된 내용이 없습니다. 웹훅을 추가하는 즉시 GitHub이 테스트를 보냅니다 — 저장한 뒤 이 페이지를 새로고침하세요.',
+
   'settings.storage': '스토리지',
   'settings.storageHint': '업로드한 이미지와 짧은 동영상을 저장할 클라우드 스토리지입니다.',
   'settings.storageProvider': '제공자',
@@ -1121,6 +1273,14 @@ export const ko: Record<I18nKey, string> = {
   'teams.icon': '팀 심볼',
   'teams.changeIcon': '심볼 변경',
   'teams.name': '팀 이름',
+  'teams.prefix': '티켓 접두사',
+  'teams.prefixHint': '새 티켓은 {prefix}-1, {prefix}-2… 순으로 번호가 매겨집니다.',
+  'teams.prefixEmptyHint': '이 팀의 티켓에 번호를 매기려면 접두사를 설정하세요.',
+  'teams.prefixLocked': '잠김 — 이 팀은 이미 티켓을 발행했습니다',
+  'teams.prefixInvalid': '영문자와 숫자 2~6자, 첫 글자는 영문자여야 합니다.',
+  'teams.prefixTaken': '다른 팀이 이미 사용 중인 접두사입니다.',
+  'teams.prefixReserved': '워크스페이스가 예약한 접두사입니다.',
+  'teams.prefixFrozen': '이 팀은 이미 티켓을 발행했으므로 접두사를 변경할 수 없습니다.',
   'teams.issueType': '이슈',
   'teams.archive': '보관',
   'teams.unarchive': '보관 해제',
@@ -1176,7 +1336,21 @@ export const ko: Record<I18nKey, string> = {
   'filters.project': '프로젝트',
   'filters.unassigned': '담당자 미지정',
   'filters.assignedToMe': '나에게 배정됨',
+  'filters.creator': '등록자',
+  'filters.createdByMe': '내가 등록함',
   'filters.backlogItem': '백로그 항목',
+  'filters.createdDate': '등록일',
+  'filters.solvedDate': '해결일',
+  'filters.dateFrom': '시작',
+  'filters.dateTo': '종료',
+  'filters.dateClear': '날짜 지우기',
+  'filters.dateToday': '오늘',
+  'filters.dateYesterday': '어제',
+  'filters.dateThisWeek': '이번 주',
+  'filters.dateLast7': '최근 7일',
+  'filters.dateLast30': '최근 30일',
+  'filters.dateThisMonth': '이번 달',
+  'filters.dateLastMonth': '지난달',
 
   'common.loading': '불러오는 중…',
   'common.none': '없음',
@@ -1340,6 +1514,9 @@ export const ko: Record<I18nKey, string> = {
   'enum.role.guest': '게스트',
   'enum.role.product': '프로덕트',
   'enum.role.developer': '개발자',
+  'enum.apiKeyScope.readOnly': '읽기 전용',
+  'enum.apiKeyScope.readWrite': '읽기 및 쓰기',
+  'enum.apiKeyScope.readWriteDelete': '읽기·쓰기·삭제',
 
   'enum.environment.development': '개발',
   'enum.environment.staging': '스테이징',
@@ -1394,8 +1571,6 @@ export const ko: Record<I18nKey, string> = {
   'enum.favouriteKind.issue': '이슈',
   'enum.favouriteKind.doc': '문서',
 
-  'enum.relation.parentOf': '상위 항목',
-  'enum.relation.subIssueOf': '하위 이슈',
   'enum.relation.relatedTo': '관련 항목',
   'enum.relation.blockedBy': '차단됨',
   'enum.relation.blocks': '차단 중',
@@ -1468,4 +1643,32 @@ export const ko: Record<I18nKey, string> = {
   'enum.webhookEvent.bugCreated': '버그 생성',
   'enum.webhookEvent.bugAssigned': '버그 배정',
   'enum.webhookEvent.commentMention': '댓글 멘션',
+
+  'enum.prState.draft': '초안',
+  'enum.prState.open': '열림',
+  'enum.prState.merged': '병합됨',
+  'enum.prState.closed': '닫힘',
+
+  'enum.ciState.pending': '실행 중',
+  'enum.ciState.success': '성공',
+  'enum.ciState.failure': '실패',
+  'enum.ciState.error': '오류',
+
+  'code.development': '개발',
+  'code.pullRequests': '풀 리퀘스트',
+  'code.commits': '커밋',
+  'code.noKindSelected': '표시할 유형을 선택하세요.',
+
+  // ⌘K 커맨드 팔레트 — 새로 만들기 항목.
+  'palette.createTask': '새 태스크',
+  'palette.createBug': '새 버그',
+  'palette.placeholder': '검색 또는 이동…',
+  'palette.empty': '결과 없음',
+  'palette.searchUnavailable': '지금은 검색을 사용할 수 없습니다 — 아래 항목으로 이동할 수 있습니다.',
+  'palette.groupIssues': '이슈',
+  'palette.groupDocs': '문서',
+  'palette.groupRoadmap': '로드맵',
+  'palette.groupProjects': '프로젝트',
+  'palette.groupReports': '리포트',
+  'palette.groupTestCases': '테스트 케이스',
 };

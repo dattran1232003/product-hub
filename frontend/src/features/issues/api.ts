@@ -22,6 +22,8 @@ export interface IssueQuery {
   /** Bug severity filter (ignored for tasks). */
   severity?: BugSeverity[];
   assigneeId?: string[];
+  /** Who opened the issue — user id(s). */
+  createdBy?: string[];
   /** Issues assigned to this user id (the "Assigned to me" views). */
   mine?: string;
   /** The caller's private personal board (owner from the token, never a param). */
@@ -38,7 +40,27 @@ export interface IssueQuery {
   reportId?: string;
   /** Free-text search over title / description / id / shortId. */
   search?: string;
+  /** Opened on/after this instant (or `YYYY-MM-DD`, read as that UTC day). */
+  createdFrom?: string;
+  /** Opened on/before this instant — inclusive. */
+  createdTo?: string;
+  /** Solved (moved to a done status) on/after this instant. Still-open issues
+   *  have no solved date, so either end on its own also excludes them. */
+  resolvedFrom?: string;
+  /** Solved on/before this instant — inclusive. */
+  resolvedTo?: string;
+  /** Sort field. Omit to keep the board ordering (drag position, then newest first) —
+   *  the kanban view must always omit it. */
+  sort?: IssueSortField;
+  /** Sort direction; defaults to `desc` server-side. */
+  dir?: IssueSortDir;
 }
+
+/** The API's `sort` values — shared so the task and bug queries (which hit the very
+ *  same `/issues` endpoint) and the `SortMenu` all name one set. */
+export type IssueSortField = 'id' | 'created' | 'updated';
+/** The API's `dir` values; the server defaults to `desc`. */
+export type IssueSortDir = 'asc' | 'desc';
 
 /**
  * Create an issue. `kind` picks task vs bug; the kind-specific fields are simply

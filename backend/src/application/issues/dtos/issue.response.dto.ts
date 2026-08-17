@@ -37,6 +37,18 @@ export class IssueResponseDto {
   @ApiProperty({ description: 'Parent issue id when this is a sub-task ("" if top-level)' })
   parentId: string;
 
+  /**
+   * The parent, denormalized — a bare `parentId` can't be rendered: the detail
+   * page would have to fetch the parent just to print its name, so it printed
+   * nothing and a sub-issue looked top-level. Only the **single-issue** read
+   * fills these (a list would be one lookup per row); elsewhere they're ''.
+   */
+  @ApiProperty({ description: "Parent's reference, for a breadcrumb ('' if top-level)", example: 'BUG-12' })
+  parentShortId: string;
+
+  @ApiProperty({ description: "Parent's title ('' if top-level)" })
+  parentTitle: string;
+
   @ApiProperty({ description: 'Human-friendly reference used in URLs', example: 'TSK-7' })
   shortId: string;
 
@@ -140,4 +152,13 @@ export class IssueResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When the issue was solved — the moment it entered a done status ' +
+      '(resolved/closed for a bug, done for a task). null while it is open, and ' +
+      'cleared again if it is reopened. Server-owned: a client cannot set it.',
+  })
+  resolvedAt: Date | null;
 }
